@@ -29,6 +29,13 @@ export class CoursesController {
     return this.coursesService.findAll();
   }
 
+  // GET /courses/:id/students -> HANYA Dosen (Lihat daftar mahasiswa di kelas)
+  @Get(':id/students')
+  @Roles('DOSEN')
+  getCourseStudents(@Param('id', ParseIntPipe) id: number) {
+    return this.coursesService.getStudentsByCourse(id);
+  }
+
   // POST /courses -> HANYA Dosen
   @Post()
   @Roles('DOSEN')

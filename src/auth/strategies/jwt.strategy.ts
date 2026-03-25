@@ -7,6 +7,9 @@ import { ConfigService } from '@nestjs/config';
 // 1. Definisikan bentuk asli dari Payload JWT yang kita buat di AuthService
 export type JwtPayload = {
   sub: number;
+  name: string;
+  npm?: string;
+  nip?: string;
   email: string;
   role: 'DOSEN' | 'MAHASISWA';
   iat?: number; // Issued At (Otomatis ditambahkan oleh NestJS)
@@ -26,6 +29,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   // 2. Hapus kata kunci 'async' dan ganti tipe 'any' dengan 'JwtPayload'
   validate(payload: JwtPayload) {
     // Karena payload sudah bertipe JwtPayload, assignment ini 100% aman (Type-Safe)
-    return { userId: payload.sub, email: payload.email, role: payload.role };
+    return {
+      sub: payload.sub,
+      name: payload.name,
+      npm: payload.npm,
+      nip: payload.nip,
+      email: payload.email,
+      role: payload.role,
+    };
   }
 }

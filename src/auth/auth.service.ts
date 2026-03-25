@@ -27,8 +27,11 @@ export class AuthService {
     // 3. Buat payload JWT menggunakan data asli dari database
     const payload = {
       sub: user.id,
+      name: user.name,
+      npm: user.npm,
+      nip: user.nip,
       email: user.email,
-      role: user.role, // Nilainya akan otomatis 'DOSEN' atau 'MAHASISWA'
+      role: user.role,
     };
 
     return {
