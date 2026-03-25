@@ -6,6 +6,7 @@ import {
   text,
   timestamp,
   pgEnum,
+  time,
   integer,
   unique,
 } from 'drizzle-orm/pg-core';
@@ -31,11 +32,32 @@ export const courses = pgTable('courses', {
   code: varchar('code', { length: 20 }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull(),
   credits: integer('credits').notNull(),
-
-  // LOGIC: Kapasitas Kelas (Diberi default 40 agar data lama aman)
-  capacity: integer('capacity').default(40).notNull(),
-
+  capacity: integer('capacity').default(40).notNull(), // Kapasitas Kelas (default 40)
   createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// tipe Enum untuk Hari agar data selalu valid
+export const dayEnum = pgEnum('day', [
+  'SENIN',
+  'SELASA',
+  'RABU',
+  'KAMIS',
+  'JUMAT',
+  'SABTU',
+  'MINGGU',
+]);
+
+// tabel Jadwal Mata Kuliah (1 Mata Kuliah bisa punya banyak baris di sini)
+export const courseSchedules = pgTable('course_schedules', {
+  id: serial('id').primaryKey(),
+  courseId: integer('course_id')
+    .references(() => courses.id, { onDelete: 'cascade' })
+    .notNull(),
+  day: dayEnum('day').notNull(),
+
+  // Tipe 'time' di PostgreSQL menyimpan format 'HH:mm:ss' (contoh: '08:00:00')
+  startTime: time('start_time').notNull(),
+  endTime: time('end_time').notNull(),
 });
 
 // LOGIC: Tabel Jembatan (IRS) MAHASISWA & COURSES

@@ -15,6 +15,13 @@
       "when": 1774432787577,
       "tag": "0001_furry_black_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774449820729,
+      "tag": "0002_big_war_machine",
+      "breakpoints": true
     }
   ]
 }

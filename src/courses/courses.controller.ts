@@ -9,6 +9,7 @@ import {
   UseGuards,
   ParseIntPipe,
   Patch,
+  Query,
 } from '@nestjs/common';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './dto/create-course.dto';
@@ -22,11 +23,19 @@ import { Roles } from '../auth/decorators/roles.decorator';
 export class CoursesController {
   constructor(private readonly coursesService: CoursesService) {}
 
-  // GET /courses -> Bisa diakses Dosen DAN Mahasiswa
+  // GET /courses -> Sekarang mendukung Pagination (?page=X&limit=Y)
   @Get()
   @Roles('DOSEN', 'MAHASISWA')
-  findAll() {
-    return this.coursesService.findAll();
+  findAll(
+    @Query('page') page: string = '1', // Jika tidak dikirim, otomatis halaman 1
+    @Query('limit') limit: string = '10', // Jika tidak dikirim, otomatis 10 data per halaman
+  ) {
+    // Ubah string dari URL menjadi angka murni
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
+
+    // Kirim 2 argumen ini ke Service
+    return this.coursesService.findAll(pageNumber, limitNumber);
   }
 
   // GET /courses/:id/students -> HANYA Dosen (Lihat daftar mahasiswa di kelas)

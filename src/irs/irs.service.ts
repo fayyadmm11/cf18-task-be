@@ -46,7 +46,7 @@ export class IrsService {
       throw new BadRequestException('Anda sudah mengambil mata kuliah ini');
     }
 
-    // 3. LOGIKA 3.1: Cek Batas Maksimal SKS (24 SKS)
+    // 3. Cek Batas Maksimal SKS (24 SKS)
     // Hitung SKS dari mata kuliah yang SUDAH diambil saat ini
     const enrolledCourses = await this.db
       .select({ credits: schema.courses.credits })
@@ -67,6 +67,54 @@ export class IrsService {
       throw new BadRequestException(
         `Gagal mengambil mata kuliah. Total SKS Anda akan menjadi ${newTotalSks} (Maksimal 24 SKS).`,
       );
+    }
+
+    // LOGIC cek jadwal
+    // A. Ambil semua jadwal dari mata kuliah yang mau diambil (Target)
+    const targetSchedules = await this.db
+      .select()
+      .from(schema.courseSchedules)
+      .where(eq(schema.courseSchedules.courseId, courseId));
+
+    if (targetSchedules.length > 0) {
+      // B. Ambil semua jadwal dari mata kuliah yang SUDAH DIAMBIL oleh mahasiswa ini
+      const takenCoursesSchedules = await this.db
+        .select({
+          courseName: schema.courses.name,
+          day: schema.courseSchedules.day,
+          startTime: schema.courseSchedules.startTime,
+          endTime: schema.courseSchedules.endTime,
+        })
+        .from(schema.studentCourses)
+        .innerJoin(
+          schema.courses,
+          eq(schema.studentCourses.courseId, schema.courses.id),
+        )
+        .innerJoin(
+          schema.courseSchedules,
+          eq(schema.courses.id, schema.courseSchedules.courseId),
+        )
+        .where(eq(schema.studentCourses.studentId, studentId));
+
+      // C. Lakukan Cross-Check (Nested Loop) menggunakan rumus Irisan Waktu
+      for (const target of targetSchedules) {
+        for (const taken of takenCoursesSchedules) {
+          // Hanya cek jika harinya sama
+          if (target.day === taken.day) {
+            // RUMUS OVERLAP: (Start A < End B) && (End A > Start B)
+            const isOverlap =
+              target.startTime < taken.endTime &&
+              target.endTime > taken.startTime;
+
+            if (isOverlap) {
+              // Jika bentrok, langsung gagalkan prosesnya!
+              throw new BadRequestException(
+                `Gagal mengambil mata kuliah! Jadwal bentrok dengan mata kuliah ${taken.courseName} pada hari ${target.day} (${target.startTime} - ${target.endTime}).`,
+              );
+            }
+          }
+        }
+      }
     }
 
     // 4. LOGIKA 3.2: Cek Kuota / Kapasitas Kelas
