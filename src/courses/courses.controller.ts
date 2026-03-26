@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   Patch,
   Query,
+  Req,
 } from '@nestjs/common';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './dto/create-course.dto';
@@ -17,6 +18,18 @@ import { UpdateCourseDto } from './dto/update-course.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { SetGradingComponentsDto } from './dto/grading.dto';
+import { BatchInputGradesDto, PublishGradesDto } from './dto/input-grades.dto';
+
+// Kontrak tipe data agar TypeScript tahu persis isi dari Token JWT
+export interface AuthRequest {
+  user: {
+    sub: number;
+    name: string;
+    email: string;
+    role: string;
+  };
+}
 
 @Controller('courses')
 @UseGuards(JwtAuthGuard, RolesGuard) // Mengaktifkan pengecekan Token & Role untuk SELURUH endpoint di bawah ini
@@ -67,5 +80,58 @@ export class CoursesController {
   @Roles('DOSEN')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.coursesService.remove(id);
+  }
+
+  // LEVEL 4 ENDPOINTS
+  // GET /courses/:id/components -> Melihat komponen penilaian (Dosen & Mahasiswa boleh lihat)
+  @Get(':id/components')
+  @Roles('DOSEN', 'MAHASISWA')
+  getGradingComponents(@Param('id', ParseIntPipe) id: number) {
+    return this.coursesService.getGradingComponents(id);
+  }
+
+  // PUT /courses/:id/components -> Dosen mengatur komponen penilaian
+  @Patch(':id/components') // Memakai PATCH atau PUT sama saja, kita pakai PATCH
+  @Roles('DOSEN')
+  setGradingComponents(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetGradingComponentsDto,
+  ) {
+    return this.coursesService.setGradingComponents(id, dto);
+  }
+
+  // LEVEL 4: ENDPOINT INPUT NILAI & PUBLIKASI
+  // GET /courses/:id/grades -> Dosen mengambil data nilai yang sudah ada
+  @Get(':id/grades')
+  @Roles('DOSEN')
+  getCourseGrades(@Param('id', ParseIntPipe) id: number) {
+    return this.coursesService.getCourseGrades(id);
+  }
+
+  // POST /courses/:id/grades -> Dosen memasukkan nilai mahasiswa
+  @Post(':id/grades')
+  @Roles('DOSEN')
+  inputGrades(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: BatchInputGradesDto,
+  ) {
+    return this.coursesService.inputStudentGrades(id, dto);
+  }
+
+  // PATCH /courses/:id/publish -> Dosen mem-publish / unpublish nilai
+  @Patch(':id/publish')
+  @Roles('DOSEN')
+  togglePublication(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: PublishGradesDto,
+  ) {
+    return this.coursesService.toggleGradePublication(id, dto.isPublished);
+  }
+
+  @Get('my/rhs')
+  @Roles('MAHASISWA')
+  getMyRHS(@Req() req: AuthRequest) {
+    const studentId = Number(req.user.sub);
+    return this.coursesService.getStudentRHS(studentId);
   }
 }

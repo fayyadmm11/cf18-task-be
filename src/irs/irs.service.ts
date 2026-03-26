@@ -17,132 +17,139 @@ export class IrsService {
   ) {}
 
   // ==========================================
-  // FITUR 1: MENGAMBIL MATA KULIAH (Logika Bisnis 3.1 & 3.2)
+  // FITUR 1: MENGAMBIL MATA KULIAH (Data Integrity Level 4)
   // ==========================================
   async takeCourse(studentId: number, courseId: number) {
-    // 1. Cari data mata kuliah yang mau diambil
-    const targetCourseArray = await this.db
-      .select()
-      .from(schema.courses)
-      .where(eq(schema.courses.id, courseId));
+    // 👇 BUNGKUS SEMUANYA DENGAN TRANSACTION (tx)
+    return await this.db.transaction(async (tx) => {
+      // 1. Cari data mata kuliah (Gunakan tx, bukan this.db)
+      const targetCourseArray = await tx
+        .select()
+        .from(schema.courses)
+        .where(eq(schema.courses.id, courseId))
+        .for('update');
 
-    if (targetCourseArray.length === 0) {
-      throw new NotFoundException('Mata kuliah tidak ditemukan');
-    }
-    const targetCourse = targetCourseArray[0];
+      if (targetCourseArray.length === 0) {
+        throw new NotFoundException('Mata kuliah tidak ditemukan');
+      }
+      const targetCourse = targetCourseArray[0];
 
-    // 2. Cek apakah mahasiswa SUDAH mengambil mata kuliah ini sebelumnya
-    const existingEnrollment = await this.db
-      .select()
-      .from(schema.studentCourses)
-      .where(
-        and(
-          eq(schema.studentCourses.studentId, studentId),
-          eq(schema.studentCourses.courseId, courseId),
-        ),
-      );
+      // 2. Cek apakah mahasiswa SUDAH mengambil mata kuliah ini sebelumnya
+      const existingEnrollment = await tx
+        .select()
+        .from(schema.studentCourses)
+        .where(
+          and(
+            eq(schema.studentCourses.studentId, studentId),
+            eq(schema.studentCourses.courseId, courseId),
+          ),
+        );
 
-    if (existingEnrollment.length > 0) {
-      throw new BadRequestException('Anda sudah mengambil mata kuliah ini');
-    }
+      if (existingEnrollment.length > 0) {
+        throw new BadRequestException('Anda sudah mengambil mata kuliah ini');
+      }
 
-    // 3. Cek Batas Maksimal SKS (24 SKS)
-    // Hitung SKS dari mata kuliah yang SUDAH diambil saat ini
-    const enrolledCourses = await this.db
-      .select({ credits: schema.courses.credits })
-      .from(schema.studentCourses)
-      .innerJoin(
-        schema.courses,
-        eq(schema.studentCourses.courseId, schema.courses.id),
-      )
-      .where(eq(schema.studentCourses.studentId, studentId));
-
-    const currentTotalSks = enrolledCourses.reduce(
-      (sum, course) => sum + course.credits,
-      0,
-    );
-    const newTotalSks = currentTotalSks + targetCourse.credits;
-
-    if (newTotalSks > 24) {
-      throw new BadRequestException(
-        `Gagal mengambil mata kuliah. Total SKS Anda akan menjadi ${newTotalSks} (Maksimal 24 SKS).`,
-      );
-    }
-
-    // LOGIC cek jadwal
-    // A. Ambil semua jadwal dari mata kuliah yang mau diambil (Target)
-    const targetSchedules = await this.db
-      .select()
-      .from(schema.courseSchedules)
-      .where(eq(schema.courseSchedules.courseId, courseId));
-
-    if (targetSchedules.length > 0) {
-      // B. Ambil semua jadwal dari mata kuliah yang SUDAH DIAMBIL oleh mahasiswa ini
-      const takenCoursesSchedules = await this.db
-        .select({
-          courseName: schema.courses.name,
-          day: schema.courseSchedules.day,
-          startTime: schema.courseSchedules.startTime,
-          endTime: schema.courseSchedules.endTime,
-        })
+      // 3. Cek Batas Maksimal SKS (24 SKS)
+      const enrolledCourses = await tx
+        .select({ credits: schema.courses.credits })
         .from(schema.studentCourses)
         .innerJoin(
           schema.courses,
           eq(schema.studentCourses.courseId, schema.courses.id),
         )
-        .innerJoin(
-          schema.courseSchedules,
-          eq(schema.courses.id, schema.courseSchedules.courseId),
-        )
         .where(eq(schema.studentCourses.studentId, studentId));
 
-      // C. Lakukan Cross-Check (Nested Loop) menggunakan rumus Irisan Waktu
-      for (const target of targetSchedules) {
-        for (const taken of takenCoursesSchedules) {
-          // Hanya cek jika harinya sama
-          if (target.day === taken.day) {
-            // RUMUS OVERLAP: (Start A < End B) && (End A > Start B)
-            const isOverlap =
-              target.startTime < taken.endTime &&
-              target.endTime > taken.startTime;
+      const currentTotalSks = enrolledCourses.reduce(
+        (sum, course) => sum + course.credits,
+        0,
+      );
+      const newTotalSks = currentTotalSks + targetCourse.credits;
 
-            if (isOverlap) {
-              // Jika bentrok, langsung gagalkan prosesnya!
-              throw new BadRequestException(
-                `Gagal mengambil mata kuliah! Jadwal bentrok dengan mata kuliah ${taken.courseName} pada hari ${target.day} (${target.startTime} - ${target.endTime}).`,
-              );
+      if (newTotalSks > 24) {
+        throw new BadRequestException(
+          `Gagal mengambil mata kuliah. Total SKS Anda akan menjadi ${newTotalSks} (Maksimal 24 SKS).`,
+        );
+      }
+
+      // LOGIC Cek Jadwal Bentrok
+      const targetSchedules = await tx
+        .select()
+        .from(schema.courseSchedules)
+        .where(eq(schema.courseSchedules.courseId, courseId));
+
+      if (targetSchedules.length > 0) {
+        const takenCoursesSchedules = await tx
+          .select({
+            courseName: schema.courses.name,
+            day: schema.courseSchedules.day,
+            startTime: schema.courseSchedules.startTime,
+            endTime: schema.courseSchedules.endTime,
+          })
+          .from(schema.studentCourses)
+          .innerJoin(
+            schema.courses,
+            eq(schema.studentCourses.courseId, schema.courses.id),
+          )
+          .innerJoin(
+            schema.courseSchedules,
+            eq(schema.courses.id, schema.courseSchedules.courseId),
+          )
+          .where(eq(schema.studentCourses.studentId, studentId));
+
+        for (const target of targetSchedules) {
+          for (const taken of takenCoursesSchedules) {
+            if (target.day === taken.day) {
+              const isOverlap =
+                target.startTime < taken.endTime &&
+                target.endTime > taken.startTime;
+              if (isOverlap) {
+                throw new BadRequestException(
+                  `Gagal mengambil mata kuliah! Jadwal bentrok dengan mata kuliah ${taken.courseName} pada hari ${target.day} (${target.startTime} - ${target.endTime}).`,
+                );
+              }
             }
           }
         }
       }
-    }
 
-    // 4. LOGIKA 3.2: Cek Kuota / Kapasitas Kelas
-    // Hitung berapa mahasiswa yang sudah ada di kelas ini
-    const enrolledStudentsQuery = await this.db
-      .select({ count: sql<number>`count(*)` })
-      .from(schema.studentCourses)
-      .where(eq(schema.studentCourses.courseId, courseId));
+      // ==========================================
+      // 4. DATA INTEGRITY: Cek Kuota Aman (Tanpa Menyusutkan Kapasitas)
+      // ==========================================
+      // Kunci data mata kuliah ini secara absolut selama transaksi berjalan (Mencegah Race Condition)
+      // Pastikan Anda sudah meletakkan ini di langkah 1 pencarian targetCourse!
+      /* const targetCourseArray = await tx.select().from(schema.courses)
+           .where(eq(schema.courses.id, courseId)).for('update'); // <-- Kunci penting
+      */
 
-    const currentEnrolledStudents = Number(enrolledStudentsQuery[0].count);
+      // Hitung secara akurat berapa mahasiswa yang sudah terdaftar di tabel student_courses
+      const enrolledQuery = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(schema.studentCourses)
+        .where(eq(schema.studentCourses.courseId, courseId));
 
-    if (currentEnrolledStudents >= targetCourse.capacity) {
-      throw new BadRequestException(
-        'Gagal mengambil mata kuliah. Kelas sudah penuh!',
-      );
-    }
+      const currentEnrolled = Number(enrolledQuery[0].count);
 
-    // 5. EKSEKUSI: Jika semua lolos (SKS aman, Kuota aman), masukkan ke database!
-    await this.db.insert(schema.studentCourses).values({
-      studentId,
-      courseId,
-    });
+      // Validasi: Jika jumlah mahasiswa sudah mencapai/melebihi batas maksimal ruangan
+      if (currentEnrolled >= targetCourse.capacity) {
+        throw new BadRequestException(
+          'Gagal mengambil kelas! Kuota kelas penuh atau baru saja habis direbut mahasiswa lain.',
+        );
+      }
 
-    return {
-      message: 'Berhasil mengambil mata kuliah',
-      course: targetCourse.name,
-      currentSks: newTotalSks,
-    };
+      // ==========================================
+      // 5. EKSEKUSI: Masukkan data ke tabel (Gunakan tx)
+      // ==========================================
+      await tx.insert(schema.studentCourses).values({
+        studentId,
+        courseId,
+      });
+
+      return {
+        message: 'Berhasil mengambil mata kuliah',
+        course: targetCourse.name,
+        currentSks: newTotalSks,
+      };
+    }); // <-- Akhir dari kapsul Transaction
   }
 
   // ==========================================

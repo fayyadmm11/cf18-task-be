@@ -1,11 +1,18 @@
 // src/courses/courses.service.ts
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DATABASE_CONNECTION } from '../database/database.module';
 import * as schema from '../database/schema';
-import { eq, sql, inArray } from 'drizzle-orm';
+import { eq, sql, inArray, and } from 'drizzle-orm';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
+import { SetGradingComponentsDto } from './dto/grading.dto';
+import { BatchInputGradesDto } from './dto/input-grades.dto';
 
 type ValidDay =
   | 'SENIN'
@@ -15,6 +22,18 @@ type ValidDay =
   | 'JUMAT'
   | 'SABTU'
   | 'MINGGU';
+
+export interface RHSDetail {
+  courseId: number;
+  code: string;
+  name: string;
+  credits: number;
+  isPublished: boolean;
+  finalScore: number | null;
+  letter: string;
+  index: number;
+  status: string;
+}
 
 @Injectable()
 export class CoursesService {
@@ -202,6 +221,227 @@ export class CoursesService {
       capacity: targetCourseArray[0].capacity,
       totalEnrolled: students.length,
       students: students,
+    };
+  }
+
+  // Level 4: Grading Components
+  async setGradingComponents(courseId: number, dto: SetGradingComponentsDto) {
+    // 1. Validasi Total Bobot Wajib 100%
+    const totalWeight = dto.components.reduce(
+      (sum, comp) => sum + comp.weight,
+      0,
+    );
+    if (totalWeight !== 100) {
+      throw new BadRequestException(
+        `Total bobot harus tepat 100%. Saat ini total bobot Anda: ${totalWeight}%`,
+      );
+    }
+
+    // 2. Gunakan Transaction agar aman (Wipe & Replace)
+    return await this.db.transaction(async (tx) => {
+      // Pastikan mata kuliahnya ada
+      const course = await tx
+        .select()
+        .from(schema.courses)
+        .where(eq(schema.courses.id, courseId));
+      if (course.length === 0)
+        throw new NotFoundException('Mata kuliah tidak ditemukan');
+
+      // Hapus seluruh komponen lama (jika ada)
+      await tx
+        .delete(schema.courseGradingComponents)
+        .where(eq(schema.courseGradingComponents.courseId, courseId));
+
+      // Masukkan komponen baru
+      const insertData = dto.components.map((c) => ({
+        courseId,
+        name: c.name,
+        weight: c.weight,
+      }));
+
+      await tx.insert(schema.courseGradingComponents).values(insertData);
+
+      return {
+        message: 'Komposisi nilai berhasil disimpan!',
+        totalWeight,
+      };
+    });
+  }
+
+  // Fungsi tambahan untuk mengambil komponen yang sudah dibuat
+  async getGradingComponents(courseId: number) {
+    return await this.db
+      .select()
+      .from(schema.courseGradingComponents)
+      .where(eq(schema.courseGradingComponents.courseId, courseId));
+  }
+
+  // LEVEL 4: INPUT NILAI & PUBLIKASI
+  // 1. Dosen Memasukkan Nilai
+  async inputStudentGrades(courseId: number, dto: BatchInputGradesDto) {
+    return await this.db.transaction(async (tx) => {
+      // Untuk menghindari duplikasi (Data Integrity), kita hapus dulu nilai lama
+      // untuk mahasiswa dan komponen yang bersangkutan, lalu kita masukkan yang baru.
+      for (const grade of dto.grades) {
+        await tx
+          .delete(schema.studentGrades)
+          .where(
+            and(
+              eq(schema.studentGrades.studentId, grade.studentId),
+              eq(schema.studentGrades.componentId, grade.componentId),
+            ),
+          );
+
+        await tx.insert(schema.studentGrades).values({
+          courseId,
+          studentId: grade.studentId,
+          componentId: grade.componentId,
+          score: grade.score.toString(), // Drizzle numeric butuh string agar presisi desimalnya aman
+        });
+      }
+
+      return { message: `${dto.grades.length} data nilai berhasil disimpan!` };
+    });
+  }
+
+  // 2. Dosen Mengatur Status Publikasi Nilai
+  async toggleGradePublication(courseId: number, isPublished: boolean) {
+    const [updatedCourse] = await this.db
+      .update(schema.courses)
+      .set({ isGradesPublished: isPublished })
+      .where(eq(schema.courses.id, courseId))
+      .returning();
+
+    if (!updatedCourse)
+      throw new NotFoundException('Mata kuliah tidak ditemukan');
+
+    const status = isPublished ? 'DIPUBLIKASIKAN' : 'DISEMBUNYIKAN';
+    return {
+      message: `Nilai mata kuliah ${updatedCourse.name} sekarang ${status} dari mahasiswa.`,
+    };
+  }
+
+  // ==========================================
+  // HELPER: KONVERSI NILAI PRESISI (SESUAI GAMBAR)
+  // ==========================================
+  private getGradeInfo(finalScore: number) {
+    // Sesuai dengan tabel range Min - Max
+    if (finalScore >= 85) return { letter: 'A', index: 4.0 };
+    if (finalScore >= 80) return { letter: 'A-', index: 3.7 }; // Asumsi indeks standar
+    if (finalScore >= 75) return { letter: 'B+', index: 3.3 };
+    if (finalScore >= 70) return { letter: 'B', index: 3.0 };
+    if (finalScore >= 65) return { letter: 'B-', index: 2.7 };
+    if (finalScore >= 60) return { letter: 'C+', index: 2.3 };
+    if (finalScore >= 55) return { letter: 'C', index: 2.0 };
+    if (finalScore >= 40) return { letter: 'D', index: 1.0 };
+    return { letter: 'E', index: 0.0 };
+  }
+
+  // ==========================================
+  // TAMBAHAN: MENGAMBIL NILAI YANG SUDAH DIINPUT DOSEN
+  // ==========================================
+  async getCourseGrades(courseId: number) {
+    return await this.db
+      .select({
+        studentId: schema.studentGrades.studentId,
+        componentId: schema.studentGrades.componentId,
+        score: schema.studentGrades.score,
+      })
+      .from(schema.studentGrades)
+      .where(eq(schema.studentGrades.courseId, courseId));
+  }
+
+  // ==========================================
+  // LEVEL 4: KALKULASI RHS & IP SEMESTER MAHASISWA
+  // ==========================================
+  async getStudentRHS(studentId: number) {
+    // 1. Tarik mata kuliah yang diambil
+    const enrolledCourses = await this.db
+      .select({
+        courseId: schema.courses.id,
+        code: schema.courses.code,
+        name: schema.courses.name,
+        credits: schema.courses.credits,
+        isPublished: schema.courses.isGradesPublished,
+      })
+      .from(schema.studentCourses)
+      .innerJoin(
+        schema.courses,
+        eq(schema.studentCourses.courseId, schema.courses.id),
+      )
+      .where(eq(schema.studentCourses.studentId, studentId));
+
+    // 2. Tarik nilai mentah
+    const studentScores = await this.db
+      .select({
+        courseId: schema.studentGrades.courseId,
+        weight: schema.courseGradingComponents.weight,
+        score: schema.studentGrades.score,
+      })
+      .from(schema.studentGrades)
+      .innerJoin(
+        schema.courseGradingComponents,
+        eq(schema.studentGrades.componentId, schema.courseGradingComponents.id),
+      )
+      .where(eq(schema.studentGrades.studentId, studentId));
+
+    let totalSks = 0;
+    let totalBobotSks = 0;
+
+    const rhsDetails: RHSDetail[] = [];
+
+    // 3. Kalkulasi per Matkul
+    for (const course of enrolledCourses) {
+      // Kita cek apakah dosen sudah memasukkan nilai untuk mahasiswa ini di matkul ini
+      const courseScores = studentScores.filter(
+        (s) => s.courseId === course.courseId,
+      );
+      const hasGrades = courseScores.length > 0;
+
+      if (!course.isPublished) {
+        // Jika belum rilis, tentukan status spesifiknya (Belum dinilai vs Menunggu Publikasi)
+        const statusText = hasGrades ? 'Menunggu Publikasi' : 'Belum Dinilai';
+
+        rhsDetails.push({
+          ...course,
+          finalScore: null,
+          letter: '-',
+          index: 0.0,
+          status: statusText, // 👈 Status cerdas dimasukkan ke sini
+        });
+        continue; // Lanjut ke matkul berikutnya (SKS tidak dihitung ke IP)
+      }
+
+      // --- JIKA DOSEN SUDAH KLIK PUBLISH ---
+      let finalScore = 0;
+      courseScores.forEach((s) => {
+        finalScore += (Number(s.score) * s.weight) / 100;
+      });
+
+      const { letter, index } = this.getGradeInfo(finalScore);
+
+      rhsDetails.push({
+        ...course,
+        finalScore: parseFloat(finalScore.toFixed(2)),
+        letter,
+        index,
+        status: 'Rilis',
+      });
+
+      // SKS dan Bobot IP hanya bertambah jika statusnya 'Rilis'
+      totalSks += course.credits;
+      totalBobotSks += course.credits * index;
+    }
+
+    // 4. Finalisasi IP Semester
+    const ipSemester =
+      totalSks > 0 ? (totalBobotSks / totalSks).toFixed(2) : '0.00';
+
+    return {
+      studentId,
+      ipSemester: parseFloat(ipSemester),
+      totalSksEvaluated: totalSks,
+      details: rhsDetails,
     };
   }
 }
