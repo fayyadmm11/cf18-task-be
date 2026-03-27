@@ -29,6 +29,13 @@
       "when": 1774505890540,
       "tag": "0003_past_korvac",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774619454785,
+      "tag": "0004_curious_brood",
+      "breakpoints": true
     }
   ]
 }

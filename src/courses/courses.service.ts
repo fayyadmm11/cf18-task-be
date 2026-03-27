@@ -1,5 +1,5 @@
 // src/courses/courses.service.ts
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DATABASE_CONNECTION } from '../database/database.module';
 import * as schema from '../database/schema';
@@ -16,6 +16,13 @@ type ValidDay =
   | 'SABTU'
   | 'MINGGU';
 
+// Fungsi bantuan untuk menghitung selisih menit
+function calculateMinutes(startTime: string, endTime: string): number {
+  const [startHour, startMin] = startTime.split(':').map(Number);
+  const [endHour, endMin] = endTime.split(':').map(Number);
+  return endHour * 60 + endMin - (startHour * 60 + startMin);
+}
+
 @Injectable()
 export class CoursesService {
   constructor(
@@ -24,16 +31,42 @@ export class CoursesService {
   ) {}
 
   // --- 1. MEMBUAT KELAS & JADWAL ---
-  async create(createCourseDto: CreateCourseDto) {
+  async create(createCourseDto: CreateCourseDto, userId: number) {
     // Pisahkan schedules dari data course lainnya
     const { schedules, ...courseData } = createCourseDto;
+
+    // 👇 TAMBAHAN VALIDASI BACKEND: Tolak jika jadwal kosong/tidak dikirim
+    if (!schedules || schedules.length === 0) {
+      throw new BadRequestException(
+        'Mata kuliah wajib memiliki minimal 1 sesi pertemuan (jadwal).',
+      );
+    }
+
+    // 👇 VALIDASI SKS vs MENIT
+    if (schedules && schedules.length > 0) {
+      const requiredMinutes = courseData.credits * 50;
+      let scheduledMinutes = 0;
+
+      for (const s of schedules) {
+        scheduledMinutes += calculateMinutes(s.startTime, s.endTime);
+      }
+
+      if (scheduledMinutes !== requiredMinutes) {
+        throw new BadRequestException(
+          `Validasi gagal: Total waktu jadwal (${scheduledMinutes} menit) tidak sesuai. Untuk ${courseData.credits} SKS dibutuhkan tepat ${requiredMinutes} menit.`,
+        );
+      }
+    }
 
     // Gunakan Transaction agar aman
     return await this.db.transaction(async (tx) => {
       // A. Insert ke tabel courses
       const [newCourse] = await tx
         .insert(schema.courses)
-        .values(courseData)
+        .values({
+          ...courseData,
+          lecturerId: userId,
+        })
         .returning();
 
       // B. Insert ke tabel course_schedules (jika ada jadwal yang diinput)
@@ -58,6 +91,36 @@ export class CoursesService {
   // --- 2. MENGUBAH KELAS & JADWAL (WIPE & REPLACE) ---
   async update(id: number, updateCourseDto: UpdateCourseDto) {
     const { schedules, ...courseData } = updateCourseDto;
+
+    // 👇 Cegah Dosen menghapus semua jadwal saat proses Edit
+    if (schedules !== undefined && schedules.length === 0) {
+      throw new BadRequestException(
+        'Mata kuliah tidak boleh dibiarkan tanpa jadwal. Minimal harus ada 1 sesi pertemuan.',
+      );
+    }
+
+    // 👇 VALIDASI SKS vs MENIT
+    if (schedules && schedules.length > 0) {
+      // Kita harus mencari SKS lama dari database jika dosen tidak mengubah SKS-nya
+      const targetCourse = await this.db
+        .select({ credits: schema.courses.credits })
+        .from(schema.courses)
+        .where(eq(schema.courses.id, id));
+
+      const currentCredits = courseData.credits || targetCourse[0].credits;
+      const requiredMinutes = currentCredits * 50;
+      let scheduledMinutes = 0;
+
+      for (const s of schedules) {
+        scheduledMinutes += calculateMinutes(s.startTime, s.endTime);
+      }
+
+      if (scheduledMinutes !== requiredMinutes) {
+        throw new BadRequestException(
+          `Validasi gagal: Total waktu jadwal (${scheduledMinutes} menit) tidak sesuai. Untuk ${currentCredits} SKS dibutuhkan tepat ${requiredMinutes} menit.`,
+        );
+      }
+    }
 
     return await this.db.transaction(async (tx) => {
       // A. Update data utama courses (jika ada perubahan nama/kapasitas)
@@ -121,13 +184,15 @@ export class CoursesService {
         credits: schema.courses.credits,
         capacity: schema.courses.capacity,
         enrolledCount: sql<number>`count(${schema.studentCourses.studentId})`,
+        lecturerName: schema.users.name,
       })
       .from(schema.courses)
       .leftJoin(
         schema.studentCourses,
         eq(schema.courses.id, schema.studentCourses.courseId),
       )
-      .groupBy(schema.courses.id)
+      .leftJoin(schema.users, eq(schema.courses.lecturerId, schema.users.id))
+      .groupBy(schema.courses.id, schema.users.name)
       .orderBy(schema.courses.id) // Wajib diurutkan agar data tidak acak saat pindah halaman
       .limit(limit)
       .offset(offset);

@@ -37,8 +37,24 @@ export const courses = pgTable('courses', {
   credits: integer('credits').notNull(),
   capacity: integer('capacity').default(40).notNull(), // Kapasitas Kelas (default 40)
   isGradesPublished: boolean('is_grades_published').default(false).notNull(),
+  lecturerId: integer('lecturer_id')
+    .references(() => users.id)
+    .notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const coursesRelations = relations(courses, ({ one }) => ({
+  // Satu Course dimiliki oleh satu User (Dosen)
+  lecturer: one(users, {
+    fields: [courses.lecturerId],
+    references: [users.id],
+  }),
+}));
+
+export const usersRelations = relations(users, ({ many }) => ({
+  // Satu User (Dosen) bisa memiliki banyak Course
+  coursesTaught: many(courses),
+}));
 
 // tipe Enum untuk Hari agar data selalu valid
 export const dayEnum = pgEnum('day', [

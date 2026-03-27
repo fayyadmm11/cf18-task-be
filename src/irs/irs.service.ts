@@ -6,7 +6,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
 import * as schema from '../database/schema'; // Sesuaikan path dengan lokasi schema.ts Anda
 
 @Injectable()
@@ -181,29 +181,59 @@ export class IrsService {
   // FITUR 3: MELIHAT STATUS IRS MAHASISWA SAAT INI
   // ==========================================
   async getStudentIrs(studentId: number) {
-    const enrolledCourses = await this.db
+    // 1. Ambil data kelas beserta NAMA DOSEN (Join dengan tabel users)
+    const enrolledCoursesRaw = await this.db
       .select({
         id: schema.courses.id,
         code: schema.courses.code,
         name: schema.courses.name,
         credits: schema.courses.credits,
+        lecturerName: schema.users.name, // 👈 TAMBAHAN: Ambil nama dosen
       })
       .from(schema.studentCourses)
       .innerJoin(
         schema.courses,
         eq(schema.studentCourses.courseId, schema.courses.id),
       )
+      .leftJoin(
+        // 👈 TAMBAHAN: Join tabel users untuk mencocokkan ID Dosen
+        schema.users,
+        eq(schema.courses.lecturerId, schema.users.id),
+      )
       .where(eq(schema.studentCourses.studentId, studentId));
 
-    // Kalkulasi total SKS dengan aman
-    const totalSks = enrolledCourses.reduce(
+    // Kalkulasi total SKS
+    const totalSks = enrolledCoursesRaw.reduce(
       (sum, course) => sum + course.credits,
       0,
     );
 
+    // 2. Ambil Jadwal untuk kelas-kelas yang diambil mahasiswa ini
+    const courseIds = enrolledCoursesRaw.map((c) => c.id);
+    let allSchedules: (typeof schema.courseSchedules.$inferSelect)[] = [];
+
+    // Jika mahasiswa punya kelas, tarik jadwal dari database
+    if (courseIds.length > 0) {
+      allSchedules = await this.db
+        .select()
+        .from(schema.courseSchedules)
+        .where(inArray(schema.courseSchedules.courseId, courseIds)); // 👈 Membutuhkan import inArray
+    }
+
+    // 3. Gabungkan Kelas dengan Jadwalnya masing-masing
+    const enrolledCourses = enrolledCoursesRaw.map((course) => {
+      const courseSchedules = allSchedules.filter(
+        (s) => s.courseId === course.id,
+      );
+      return {
+        ...course,
+        schedules: courseSchedules, // 👈 TAMBAHAN: Sisipkan jadwal ke dalam data kelas
+      };
+    });
+
     return {
       totalSks: totalSks,
-      enrolledCourses: enrolledCourses,
+      enrolledCourses: enrolledCourses, // Data ini sekarang sudah lengkap dengan Dosen & Jadwal!
     };
   }
 

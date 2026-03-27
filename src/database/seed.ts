@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema';
 import * as bcrypt from 'bcrypt';
-import { fakerID_ID as faker } from '@faker-js/faker'; // Menggunakan nama lokal Indonesia
+import { fakerID_ID as faker } from '@faker-js/faker';
 import 'dotenv/config';
 
 async function main() {
@@ -33,15 +33,19 @@ async function main() {
 
     console.log('👨‍🏫 Menciptakan Dosen & Mahasiswa Utama...');
 
-    // 1. Buat Akun Default (Agar Anda tetap bisa login)
-    await db.insert(schema.users).values({
-      name: 'Prof. Budi Raharjo, M.Kom.',
-      nip: '198001012005011001',
-      email: 'dosen@siakng.com',
-      password: hashedPassword,
-      role: 'DOSEN',
-    });
+    // 1. Buat Akun Default Dosen (TAMBAHAN: Tangkap ID-nya pakai returning)
+    const [defaultDosen] = await db
+      .insert(schema.users)
+      .values({
+        name: 'Prof. Budi Raharjo, M.Kom.',
+        nip: '198001012005011001',
+        email: 'dosen@siakng.com',
+        password: hashedPassword,
+        role: 'DOSEN',
+      })
+      .returning();
 
+    // Buat Akun Default Mahasiswa
     const [defaultMahasiswa] = await db
       .insert(schema.users)
       .values({
@@ -70,7 +74,7 @@ async function main() {
     // Gabungkan default mahasiswa ke dalam array untuk diikutkan kelas nanti
     const allStudents = [defaultMahasiswa, ...dummyStudents];
 
-    // 3. Buat Mata Kuliah IT
+    // 3. Buat Mata Kuliah IT (TAMBAHAN: Masukkan lecturerId)
     console.log('📚 Menyusun Kurikulum Mata Kuliah IT...');
     const courseTemplates = [
       {
@@ -78,32 +82,38 @@ async function main() {
         name: 'Algoritma & Pemrograman Dasar',
         credits: 4,
         capacity: 40,
+        lecturerId: defaultDosen.id, // 👈 Disisipkan di sini
       },
       {
         code: 'IF202',
         name: 'Sistem Basis Data Terapan',
         credits: 3,
         capacity: 40,
+        lecturerId: defaultDosen.id, // 👈 Disisipkan di sini
       },
       {
         code: 'IF303',
         name: 'Pengembangan Aplikasi Web',
         credits: 4,
         capacity: 30,
+        lecturerId: defaultDosen.id, // 👈 Disisipkan di sini
       },
       {
         code: 'IF404',
         name: 'Infrastruktur DevOps & Cloud',
         credits: 3,
         capacity: 25,
+        lecturerId: defaultDosen.id, // 👈 Disisipkan di sini
       },
       {
         code: 'IF505',
         name: 'Keamanan Sistem Informasi',
         credits: 3,
         capacity: 30,
+        lecturerId: defaultDosen.id, // 👈 Disisipkan di sini
       },
     ];
+
     const createdCourses = await db
       .insert(schema.courses)
       .values(courseTemplates)
@@ -113,7 +123,7 @@ async function main() {
     console.log('🗓️ Mengatur Jadwal, Komponen Penilaian, dan IRS Mahasiswa...');
 
     for (const course of createdCourses) {
-      // A. Buat Jadwal (1-2 kali seminggu per matkul)
+      // A. Buat Jadwal
       const days = ['SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT'] as const;
       await db.insert(schema.courseSchedules).values({
         courseId: course.id,
@@ -133,7 +143,6 @@ async function main() {
         .returning();
 
       // C. Daftarkan Mahasiswa ke Kelas Ini (IRS)
-      // Paksa Default Mahasiswa masuk ke SEMUA kelas, lalu acak mahasiswa lain
       const enrolledStudents = allStudents.filter(
         (s) => s.id === defaultMahasiswa.id || Math.random() > 0.4,
       );
@@ -145,7 +154,6 @@ async function main() {
       await db.insert(schema.studentCourses).values(enrollmentsData);
 
       // D. Simulasi Dosen Memberi Nilai
-      // (Beri nilai acak untuk setiap mahasiswa yang ikut matkul ini di setiap komponen)
       const gradesData: any[] = [];
       for (const student of enrolledStudents) {
         for (const comp of components) {
@@ -153,7 +161,6 @@ async function main() {
             studentId: student.id,
             courseId: course.id,
             componentId: comp.id,
-            // Generate nilai acak antara 50.00 s/d 100.00
             score: (Math.random() * 50 + 50).toFixed(2),
           });
         }

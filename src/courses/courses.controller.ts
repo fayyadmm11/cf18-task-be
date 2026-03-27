@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   Patch,
   Query,
+  Req, // 👈 Tambahkan Req di sini
 } from '@nestjs/common';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './create-course.dto';
@@ -19,9 +20,9 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 // Kontrak tipe data agar TypeScript tahu persis isi dari Token JWT
-export interface AuthRequest {
+export interface AuthRequest extends Request {
   user: {
-    sub: number;
+    sub: number; // ID User
     name: string;
     email: string;
     role: string;
@@ -29,7 +30,7 @@ export interface AuthRequest {
 }
 
 @Controller('courses')
-@UseGuards(JwtAuthGuard, RolesGuard) // Mengaktifkan pengecekan Token & Role untuk SELURUH endpoint di bawah ini
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class CoursesController {
   constructor(private readonly coursesService: CoursesService) {}
 
@@ -37,22 +38,20 @@ export class CoursesController {
   @Get()
   @Roles('DOSEN', 'MAHASISWA')
   findAll(
-    @Query('page') page: string = '1', // Jika tidak dikirim, otomatis halaman 1
-    @Query('limit') limit: string = '10', // Jika tidak dikirim, otomatis 10 data per halaman
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10',
   ) {
-    // Ubah string dari URL menjadi angka murni
     const pageNumber = parseInt(page, 10);
     const limitNumber = parseInt(limit, 10);
-
-    // Kirim 2 argumen ini ke Service
     return this.coursesService.findAll(pageNumber, limitNumber);
   }
 
   // POST /courses -> HANYA Dosen
   @Post()
   @Roles('DOSEN')
-  create(@Body() createCourseDto: CreateCourseDto) {
-    return this.coursesService.create(createCourseDto);
+  create(@Body() createCourseDto: CreateCourseDto, @Req() req: AuthRequest) {
+    const userId = req.user.sub;
+    return this.coursesService.create(createCourseDto, userId);
   }
 
   // PATCH /courses/:id -> HANYA Dosen
