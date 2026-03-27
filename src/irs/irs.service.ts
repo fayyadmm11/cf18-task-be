@@ -242,6 +242,7 @@ export class IrsService {
       courseName: targetCourseArray[0].name,
       capacity: targetCourseArray[0].capacity,
       totalEnrolled: students.length,
+      isGradesPublished: targetCourseArray[0].isGradesPublished,
       students: students,
     };
   }
