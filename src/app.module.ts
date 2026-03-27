@@ -7,6 +7,8 @@ import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
 import { CoursesModule } from './courses/courses.module';
 import { IrsModule } from './irs/irs.module';
+import { GradesModule } from './grades/grades.module';
+import { RhsModule } from './rhs/rhs.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { IrsModule } from './irs/irs.module';
     AuthModule,
     CoursesModule,
     IrsModule,
+    GradesModule,
+    RhsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -206,4 +206,43 @@ export class IrsService {
       enrolledCourses: enrolledCourses,
     };
   }
+
+  // ==========================================
+  // FITUR 4: MELIHAT DAFTAR PESERTA KELAS (Khusus Dosen)
+  // ==========================================
+  async getCourseStudents(courseId: number) {
+    // 1. Cek apakah mata kuliahnya ada
+    const targetCourseArray = await this.db
+      .select()
+      .from(schema.courses)
+      .where(eq(schema.courses.id, courseId));
+
+    if (targetCourseArray.length === 0) {
+      throw new NotFoundException('Mata kuliah tidak ditemukan');
+    }
+
+    // 2. Lakukan JOIN untuk mengambil data mahasiswa dari tabel jembatan
+    const students = await this.db
+      .select({
+        id: schema.users.id,
+        npm: schema.users.npm,
+        name: schema.users.name,
+        email: schema.users.email,
+        enrolledAt: schema.studentCourses.createdAt,
+      })
+      .from(schema.studentCourses)
+      .innerJoin(
+        schema.users,
+        eq(schema.studentCourses.studentId, schema.users.id),
+      )
+      .where(eq(schema.studentCourses.courseId, courseId));
+
+    // 3. Kembalikan data dengan struktur yang rapi
+    return {
+      courseName: targetCourseArray[0].name,
+      capacity: targetCourseArray[0].capacity,
+      totalEnrolled: students.length,
+      students: students,
+    };
+  }
 }

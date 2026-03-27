@@ -12,7 +12,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { IrsService } from './irs.service';
-import { CreateIrsDto } from './dto/create-irs.dto';
+import { CreateIrsDto } from './create-irs.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -51,11 +51,9 @@ export class IrsController {
     @Request() req: RequestWithUser,
     @Body() createIrsDto: CreateIrsDto,
   ) {
-    // Ambil ID dari property mana pun yang tersedia di JWT Anda
     const studentId = req.user.sub;
 
     if (!studentId) {
-      // Lempar error rapi ke Postman jika token bermasalah, bukan crash ke database
       throw new UnauthorizedException(
         'ID Mahasiswa tidak ditemukan di dalam token JWT Anda.',
       );
@@ -80,5 +78,14 @@ export class IrsController {
     }
 
     return this.irsService.dropCourse(studentId, courseId);
+  }
+
+  // 👇 TAMBAHAN BARU: Endpoint Dosen dipindah ke ranah IRS
+  // GET /irs/courses/:courseId/students
+  @Get('courses/:courseId/students')
+  @Roles('DOSEN')
+  async getCourseStudents(@Param('courseId', ParseIntPipe) courseId: number) {
+    // Kita akan memanggil method getCourseStudents dari IrsService
+    return this.irsService.getCourseStudents(courseId);
   }
 }
