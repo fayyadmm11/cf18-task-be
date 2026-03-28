@@ -10,7 +10,7 @@ import {
   ParseIntPipe,
   Patch,
   Query,
-  Req, // 👈 Tambahkan Req di sini
+  Req,
 } from '@nestjs/common';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './create-course.dto';
@@ -44,6 +44,13 @@ export class CoursesController {
     const pageNumber = parseInt(page, 10);
     const limitNumber = parseInt(limit, 10);
     return this.coursesService.findAll(pageNumber, limitNumber);
+  }
+
+  // 👇 Tambahkan endpoint ini untuk mengambil daftar peserta kelas
+  @Get(':courseId/participants')
+  @Roles('DOSEN')
+  getCourseParticipants(@Param('courseId', ParseIntPipe) courseId: number) {
+    return this.coursesService.getCourseParticipants(courseId);
   }
 
   // POST /courses -> HANYA Dosen

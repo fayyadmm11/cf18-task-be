@@ -73,7 +73,46 @@ export class GradesService {
   // FITUR 2: INPUT NILAI MENTAH MAHASISWA
   // ==========================================
   async getCourseGrades(courseId: number) {
-    return await this.db
+    // 1. Ambil info Mata Kuliah
+    const [course] = await this.db
+      .select({
+        name: schema.courses.name,
+        isGradesPublished: schema.courses.isGradesPublished,
+      })
+      .from(schema.courses)
+      .where(eq(schema.courses.id, courseId));
+
+    if (!course) {
+      throw new NotFoundException('Mata kuliah tidak ditemukan');
+    }
+
+    // 2. Ambil Komponen Penilaian (UTS, UAS, dll)
+    const components = await this.db
+      .select({
+        id: schema.courseGradingComponents.id,
+        name: schema.courseGradingComponents.name,
+        weight: schema.courseGradingComponents.weight,
+      })
+      .from(schema.courseGradingComponents)
+      .where(eq(schema.courseGradingComponents.courseId, courseId));
+
+    // 3. Ambil Daftar Mahasiswa yang mengambil kelas ini
+    // ⚠️ CATATAN: Sesuaikan 'schema.enrollments' dengan nama tabel IRS/KRS Anda di Drizzle!
+    const students = await this.db
+      .select({
+        id: schema.users.id, // Asumsi tabel mahasiswa menggunakan 'users'
+        npm: schema.users.npm, // Atau .nim tergantung schema Anda
+        name: schema.users.name,
+      })
+      .from(schema.users)
+      .innerJoin(
+        schema.studentCourses, // Ganti ini dengan tabel relasi IRS Anda (contoh: schema.irs)
+        eq(schema.users.id, schema.studentCourses.studentId),
+      )
+      .where(eq(schema.studentCourses.courseId, courseId));
+
+    // 4. Ambil Nilai Mentah
+    const rawGrades = await this.db
       .select({
         studentId: schema.studentGrades.studentId,
         componentId: schema.studentGrades.componentId,
@@ -81,6 +120,23 @@ export class GradesService {
       })
       .from(schema.studentGrades)
       .where(eq(schema.studentGrades.courseId, courseId));
+
+    // 5. Ubah Array Nilai menjadi Format Kamus (Record) untuk React
+    const formattedGrades: Record<string, number> = {};
+    rawGrades.forEach((grade) => {
+      const key = `${grade.studentId}_${grade.componentId}`;
+      formattedGrades[key] = Number(grade.score);
+    });
+
+    // 6. Kembalikan Paket Lengkap (Master Object) untuk Frontend!
+    return {
+      courseId: courseId.toString(),
+      courseName: course.name,
+      isPublished: course.isGradesPublished,
+      students: students,
+      initialComponents: components,
+      initialGrades: formattedGrades,
+    };
   }
 
   async inputStudentGrades(courseId: number, dto: BatchInputGradesDto) {

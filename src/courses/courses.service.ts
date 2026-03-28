@@ -1,5 +1,10 @@
 // src/courses/courses.service.ts
-import { Injectable, Inject, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DATABASE_CONNECTION } from '../database/database.module';
 import * as schema from '../database/schema';
@@ -230,6 +235,44 @@ export class CoursesService {
         page,
         lastPage: Math.ceil(totalCourses / limit),
       },
+    };
+  }
+
+  // 👇 Tambahkan fungsi ini untuk mengambil data dari Database
+  async getCourseParticipants(courseId: number) {
+    // 1. Cek apakah mata kuliahnya ada
+    const [course] = await this.db
+      .select({ name: schema.courses.name, capacity: schema.courses.capacity })
+      .from(schema.courses)
+      .where(eq(schema.courses.id, courseId));
+
+    if (!course) {
+      throw new NotFoundException('Mata kuliah tidak ditemukan');
+    }
+
+    // 2. Ambil daftar mahasiswa (Gabungkan tabel Users dan Enrollments/IRS)
+    // ⚠️ Sesuaikan 'schema.enrollments' dan 'schema.users' dengan file schema.ts Anda!
+    const participants = await this.db
+      .select({
+        id: schema.users.id,
+        npm: schema.users.npm, // Sesuaikan jika namanya 'nim'
+        name: schema.users.name,
+        email: schema.users.email,
+      })
+      .from(schema.users)
+      .innerJoin(
+        schema.studentCourses, // Ganti dengan tabel relasi mahasiswa-matkul Anda
+        eq(schema.users.id, schema.studentCourses.studentId),
+      )
+      .where(eq(schema.studentCourses.courseId, courseId));
+
+    // 3. Kirim paketnya ke React!
+    return {
+      courseId: courseId.toString(),
+      courseName: course.name,
+      capacity: course.capacity,
+      enrolled: participants.length,
+      students: participants,
     };
   }
 }
