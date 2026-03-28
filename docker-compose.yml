@@ -7,16 +7,16 @@ services:
     container_name: siakng_db
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123 # Ganti dengan password yang lebih aman jika perlu
+      POSTGRES_PASSWORD: password123
       POSTGRES_DB: siakng_lite
     ports:
       - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
-    # networks:
-    #   - siakng_network
+    networks:
+      - siakng_network
 
-  # Konfigurasi Backend NestJS (Persiapan)
+  # Konfigurasi Backend NestJS
   # backend:
   #   build:
   #     context: .
@@ -27,15 +27,15 @@ services:
   #   depends_on:
   #     - postgres
   #   environment:
-  #     # URL ini akan digunakan oleh ORM untuk terhubung ke database
+  #     # Terhubung menggunakan nama service 'postgres'
   #     DATABASE_URL: postgresql://postgres:password123@postgres:5432/siakng_lite?schema=public
+  #     # (Opsional) Tambahkan variabel .env lain yang dibutuhkan backend Anda di sini, misalnya JWT_SECRET
   #   networks:
   #     - siakng_network
 
 volumes:
-  # Volume persisten agar data tabel tidak hilang saat container dimatikan
   pgdata:
 
-# networks:
-#   siakng_network:
-#     driver: bridge
+networks:
+  siakng_network:
+    driver: bridge

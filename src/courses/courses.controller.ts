@@ -12,6 +12,14 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiQuery,
+  ApiBody,
+} from '@nestjs/swagger';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './create-course.dto';
 import { UpdateCourseDto } from './update-course.dto';
@@ -29,6 +37,8 @@ export interface AuthRequest extends Request {
   };
 }
 
+@ApiTags('Courses')
+@ApiBearerAuth('access-token')
 @Controller('courses')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CoursesController {
@@ -37,6 +47,34 @@ export class CoursesController {
   // GET /courses -> Sekarang mendukung Pagination (?page=X&limit=Y)
   @Get()
   @Roles('DOSEN', 'MAHASISWA')
+  @ApiOperation({
+    summary: 'Get all courses',
+    description: 'Mendapatkan daftar semua courses dengan support pagination',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Nomor halaman (default: 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Jumlah data per halaman (default: 10)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of courses',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Token tidak valid atau tidak tersedia',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden - User tidak memiliki role yang sesuai',
+  })
   findAll(
     @Query('page') page: string = '1',
     @Query('limit') limit: string = '10',
@@ -49,6 +87,15 @@ export class CoursesController {
   // 👇 Tambahkan endpoint ini untuk mengambil daftar peserta kelas
   @Get(':courseId/participants')
   @Roles('DOSEN')
+  @ApiOperation({
+    summary: 'Get course participants',
+    description:
+      'Mendapatkan daftar peserta dari sebuah course (hanya untuk DOSEN)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of participants',
+  })
   getCourseParticipants(@Param('courseId', ParseIntPipe) courseId: number) {
     return this.coursesService.getCourseParticipants(courseId);
   }
@@ -56,6 +103,22 @@ export class CoursesController {
   // POST /courses -> HANYA Dosen
   @Post()
   @Roles('DOSEN')
+  @ApiOperation({
+    summary: 'Create new course',
+    description: 'Membuat course baru (hanya untuk DOSEN)',
+  })
+  @ApiBody({
+    type: CreateCourseDto,
+    description: 'Data course yang akan dibuat',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Course berhasil dibuat',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request body',
+  })
   create(@Body() createCourseDto: CreateCourseDto, @Req() req: AuthRequest) {
     const userId = req.user.sub;
     return this.coursesService.create(createCourseDto, userId);
@@ -64,6 +127,22 @@ export class CoursesController {
   // PATCH /courses/:id -> HANYA Dosen
   @Patch(':id')
   @Roles('DOSEN')
+  @ApiOperation({
+    summary: 'Update course',
+    description: 'Update data course (hanya untuk DOSEN)',
+  })
+  @ApiBody({
+    type: UpdateCourseDto,
+    description: 'Data course yang akan diupdate (semua field opsional)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Course berhasil diupdate',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Course tidak ditemukan',
+  })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateCourseDto: UpdateCourseDto,
@@ -74,6 +153,18 @@ export class CoursesController {
   // DELETE /courses/:id -> HANYA Dosen
   @Delete(':id')
   @Roles('DOSEN')
+  @ApiOperation({
+    summary: 'Delete course',
+    description: 'Menghapus course (hanya untuk DOSEN)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Course berhasil dihapus',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Course tidak ditemukan',
+  })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.coursesService.remove(id);
   }
