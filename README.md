@@ -369,16 +369,17 @@ docker-compose down
 
 ### Konfigurasi docker-compose.yml
 
-Saat ini hanya PostgreSQL yang aktif. Backend bisa di-uncomment untuk production deployment:
+Saat ini hanya PostgreSQL yang aktif. Backend bisa di-uncomment untuk production deployment. 
+**PENTING:** Konfigurasi ini membaca kredensial dari file `.env`.
 
 ```yaml
 services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: siakng_lite
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - '5432:5432'
 ```

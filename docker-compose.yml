@@ -6,9 +6,9 @@ services:
     image: postgres:15-alpine
     container_name: siakng_db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: siakng_lite
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-siakng_lite}
     ports:
       - '5432:5432'
     volumes:
@@ -27,9 +27,8 @@ services:
   #   depends_on:
   #     - postgres
   #   environment:
-  #     # Terhubung menggunakan nama service 'postgres'
-  #     DATABASE_URL: postgresql://postgres:password123@postgres:5432/siakng_lite?schema=public
-  #     # (Opsional) Tambahkan variabel .env lain yang dibutuhkan backend Anda di sini, misalnya JWT_SECRET
+  #     DATABASE_URL: ${DATABASE_URL_DOCKER}
+  #     JWT_SECRET: ${JWT_SECRET}
   #   networks:
   #     - siakng_network
 
