@@ -101,6 +101,8 @@ pnpm run drizzle:migrate
 # (Optional) Seed database dengan data dummy
 pnpm run seed
 ```
+### Catatan seeding data
+Keterangan emali dan password bisa dilihat di terminal saat seeding dijalankan
 
 ## Running the Application
 

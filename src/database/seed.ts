@@ -13,9 +13,7 @@ async function main() {
   const db = drizzle(pool, { schema });
 
   try {
-    // ==========================================
     // FASE 1: BULLDOZER (HAPUS DATA LAMA)
-    // ==========================================
     console.log('🚜 Menghancurkan data lama (Reverse Order)...');
     await db.delete(schema.studentGrades);
     await db.delete(schema.courseGradingComponents);
@@ -25,15 +23,13 @@ async function main() {
     await db.delete(schema.users);
     console.log('✅ Database bersih kinclong!');
 
-    // ==========================================
     // FASE 2: PABRIK DATA
-    // ==========================================
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash('password123', saltRounds);
 
-    console.log('👨‍🏫 Menciptakan Dosen & Mahasiswa Utama...');
+    console.log('👨‍🏫 Merekrut 10 Dosen (1 Utama, 9 Dummy)...');
 
-    // 1. Buat Akun Default Dosen (TAMBAHAN: Tangkap ID-nya pakai returning)
+    // 1a. Buat Akun Default Dosen (Bisa dipakai login)
     const [defaultDosen] = await db
       .insert(schema.users)
       .values({
@@ -45,7 +41,26 @@ async function main() {
       })
       .returning();
 
-    // Buat Akun Default Mahasiswa
+    // 1b. Buat 9 Dosen Dummy Menggunakan Faker
+    const dummyLecturersData = Array.from({ length: 9 }).map(() => ({
+      name: `${faker.person.fullName()}, M.T.`, // Tambah gelar agar realistis
+      nip: faker.string.numeric(18),
+      email: faker.internet.email().toLowerCase(),
+      password: hashedPassword,
+      role: 'DOSEN' as const,
+    }));
+
+    const dummyLecturers = await db
+      .insert(schema.users)
+      .values(dummyLecturersData)
+      .returning();
+
+    // Gabungkan semua 10 dosen ke dalam satu array
+    const allLecturers = [defaultDosen, ...dummyLecturers];
+
+    // 2. Mass Seeding Mahasiswa (Buat 30 Mahasiswa Dummy)
+    // ... (KODE MAHASISWA ANDA TETAP SAMA SEPERTI SEBELUMNYA) ...
+    console.log('🧑‍🎓 Mendaftarkan 30 Mahasiswa Angkatan Baru...');
     const [defaultMahasiswa] = await db
       .insert(schema.users)
       .values({
@@ -57,8 +72,6 @@ async function main() {
       })
       .returning();
 
-    // 2. Mass Seeding Mahasiswa (Buat 30 Mahasiswa Dummy)
-    console.log('🧑‍🎓 Mendaftarkan 30 Mahasiswa Angkatan Baru...');
     const dummyStudentsData = Array.from({ length: 30 }).map(() => ({
       name: faker.person.fullName(),
       npm: faker.string.numeric(10),
@@ -71,46 +84,52 @@ async function main() {
       .values(dummyStudentsData)
       .returning();
 
-    // Gabungkan default mahasiswa ke dalam array untuk diikutkan kelas nanti
     const allStudents = [defaultMahasiswa, ...dummyStudents];
 
-    // 3. Buat Mata Kuliah IT (TAMBAHAN: Masukkan lecturerId)
-    console.log('📚 Menyusun Kurikulum Mata Kuliah IT...');
+    // 3. Buat Mata Kuliah IT & Acak Dosen Pengajarnya
+    console.log('📚 Menyusun Kurikulum dan Membagi Beban Mengajar Dosen...');
+
+    // Fungsi kecil untuk mengambil ID dosen secara acak dari 10 dosen tadi
+    const getRandomLecturerId = () => {
+      const randomIndex = Math.floor(Math.random() * allLecturers.length);
+      return allLecturers[randomIndex].id;
+    };
+
     const courseTemplates = [
       {
         code: 'IF101',
         name: 'Algoritma & Pemrograman Dasar',
         credits: 4,
         capacity: 40,
-        lecturerId: defaultDosen.id, // 👈 Disisipkan di sini
+        lecturerId: getRandomLecturerId(), // 👈 Sekarang dosennya acak!
       },
       {
         code: 'IF202',
         name: 'Sistem Basis Data Terapan',
         credits: 3,
         capacity: 40,
-        lecturerId: defaultDosen.id, // 👈 Disisipkan di sini
+        lecturerId: getRandomLecturerId(),
       },
       {
         code: 'IF303',
         name: 'Pengembangan Aplikasi Web',
         credits: 4,
         capacity: 30,
-        lecturerId: defaultDosen.id, // 👈 Disisipkan di sini
+        lecturerId: getRandomLecturerId(),
       },
       {
         code: 'IF404',
         name: 'Infrastruktur DevOps & Cloud',
         credits: 3,
         capacity: 25,
-        lecturerId: defaultDosen.id, // 👈 Disisipkan di sini
+        lecturerId: getRandomLecturerId(),
       },
       {
         code: 'IF505',
         name: 'Keamanan Sistem Informasi',
         credits: 3,
         capacity: 30,
-        lecturerId: defaultDosen.id, // 👈 Disisipkan di sini
+        lecturerId: getRandomLecturerId(),
       },
     ];
 
@@ -154,7 +173,8 @@ async function main() {
       await db.insert(schema.studentCourses).values(enrollmentsData);
 
       // D. Simulasi Dosen Memberi Nilai
-      const gradesData: any[] = [];
+      type NewGrade = typeof schema.studentGrades.$inferInsert;
+      const gradesData: NewGrade[] = [];
       for (const student of enrolledStudents) {
         for (const comp of components) {
           gradesData.push({
@@ -173,6 +193,13 @@ async function main() {
     console.log(
       '🎉 MASS SEEDING SUKSES! Sistem kini berisi data yang sangat padat.',
     );
+    console.log('🚀 GUNAKAN AKUN BERIKUT UNTUK LOGIN DI FRONTEND:');
+    console.log('👨‍🏫 Akun Dosen Utama     : dosen@siakng.com');
+    console.log('🎓 Akun Mahasiswa Utama : mahasiswa@siakng.com');
+    console.log(
+      '📊 Akun Mahasiswa Lain  : cek database, bisa dengan drizzle studio, jalankan: pnpm drizzle-kit studio',
+    );
+    console.log('🔑 Password (Semua Akun) : password123');
   } catch (error) {
     console.error('❌ Gagal melakukan seeding:', error);
   } finally {
@@ -181,4 +208,4 @@ async function main() {
   }
 }
 
-main();
+void main();
