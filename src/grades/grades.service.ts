@@ -4,6 +4,7 @@ import {
   Inject,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DATABASE_CONNECTION } from '../database/database.module';
@@ -31,7 +32,26 @@ export class GradesService {
       .where(eq(schema.courseGradingComponents.courseId, courseId));
   }
 
-  async setGradingComponents(courseId: number, dto: SetGradingComponentsDto) {
+  async setGradingComponents(
+    courseId: number,
+    dto: SetGradingComponentsDto,
+    lecturerId: number,
+  ) {
+    const existingCourse = await this.db
+      .select({ lecturerId: schema.courses.lecturerId })
+      .from(schema.courses)
+      .where(eq(schema.courses.id, courseId));
+
+    if (existingCourse.length === 0) {
+      throw new NotFoundException('Mata kuliah tidak ditemukan');
+    }
+
+    if (existingCourse[0].lecturerId !== lecturerId) {
+      throw new ForbiddenException(
+        'Akses Ditolak! Anda bukan pengampu mata kuliah ini.',
+      );
+    }
+
     const totalWeight = dto.components.reduce(
       (sum, comp) => sum + comp.weight,
       0,
@@ -72,18 +92,25 @@ export class GradesService {
   // ==========================================
   // FITUR 2: INPUT NILAI MENTAH MAHASISWA
   // ==========================================
-  async getCourseGrades(courseId: number) {
+  async getCourseGrades(courseId: number, lecturerId: number) {
     // 1. Ambil info Mata Kuliah
     const [course] = await this.db
       .select({
         name: schema.courses.name,
         isGradesPublished: schema.courses.isGradesPublished,
+        lecturerId: schema.courses.lecturerId,
       })
       .from(schema.courses)
       .where(eq(schema.courses.id, courseId));
 
     if (!course) {
       throw new NotFoundException('Mata kuliah tidak ditemukan');
+    }
+
+    if (course.lecturerId !== lecturerId) {
+      throw new ForbiddenException(
+        'Akses Ditolak! Anda bukan pengampu mata kuliah ini.',
+      );
     }
 
     // 2. Ambil Komponen Penilaian (UTS, UAS, dll)
@@ -139,7 +166,26 @@ export class GradesService {
     };
   }
 
-  async inputStudentGrades(courseId: number, dto: BatchInputGradesDto) {
+  async inputStudentGrades(
+    courseId: number,
+    dto: BatchInputGradesDto,
+    lecturerId: number,
+  ) {
+    const existingCourse = await this.db
+      .select({ lecturerId: schema.courses.lecturerId })
+      .from(schema.courses)
+      .where(eq(schema.courses.id, courseId));
+
+    if (existingCourse.length === 0) {
+      throw new NotFoundException('Mata kuliah tidak ditemukan');
+    }
+
+    if (existingCourse[0].lecturerId !== lecturerId) {
+      throw new ForbiddenException(
+        'Akses Ditolak! Anda bukan pengampu mata kuliah ini.',
+      );
+    }
+
     return await this.db.transaction(async (tx) => {
       for (const grade of dto.grades) {
         await tx
@@ -166,7 +212,26 @@ export class GradesService {
   // ==========================================
   // FITUR 3: PUBLIKASI NILAI
   // ==========================================
-  async toggleGradePublication(courseId: number, isPublished: boolean) {
+  async toggleGradePublication(
+    courseId: number,
+    isPublished: boolean,
+    lecturerId: number,
+  ) {
+    const existingCourse = await this.db
+      .select({ lecturerId: schema.courses.lecturerId })
+      .from(schema.courses)
+      .where(eq(schema.courses.id, courseId));
+
+    if (existingCourse.length === 0) {
+      throw new NotFoundException('Mata kuliah tidak ditemukan');
+    }
+
+    if (existingCourse[0].lecturerId !== lecturerId) {
+      throw new ForbiddenException(
+        'Akses Ditolak! Anda bukan pengampu mata kuliah ini.',
+      );
+    }
+
     const [updatedCourse] = await this.db
       .update(schema.courses)
       .set({ isGradesPublished: isPublished })

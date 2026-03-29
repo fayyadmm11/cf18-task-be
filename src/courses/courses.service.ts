@@ -4,6 +4,7 @@ import {
   Inject,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { DATABASE_CONNECTION } from '../database/database.module';
@@ -94,7 +95,26 @@ export class CoursesService {
   }
 
   // --- 2. MENGUBAH KELAS & JADWAL (WIPE & REPLACE) ---
-  async update(id: number, updateCourseDto: UpdateCourseDto) {
+  async update(
+    id: number,
+    updateCourseDto: UpdateCourseDto,
+    lecturerId: number,
+  ) {
+    const existingCourse = await this.db
+      .select({ lecturerId: schema.courses.lecturerId })
+      .from(schema.courses)
+      .where(eq(schema.courses.id, id));
+
+    if (existingCourse.length === 0) {
+      throw new NotFoundException('Mata kuliah tidak ditemukan');
+    }
+
+    if (existingCourse[0].lecturerId !== lecturerId) {
+      throw new ForbiddenException(
+        'Akses Ditolak! Anda bukan pengampu mata kuliah ini.',
+      );
+    }
+
     const { schedules, ...courseData } = updateCourseDto;
 
     // 👇 Cegah Dosen menghapus semua jadwal saat proses Edit
@@ -160,9 +180,22 @@ export class CoursesService {
   }
 
   // --- 3. MENGHAPUS KELAS ---
-  async remove(id: number) {
-    // Karena di schema.ts kita sudah pakai { onDelete: 'cascade' },
-    // Menghapus course akan OTOMATIS menghapus seluruh jadwalnya di database!
+  async remove(id: number, lecturerId: number) {
+    const existingCourse = await this.db
+      .select({ lecturerId: schema.courses.lecturerId })
+      .from(schema.courses)
+      .where(eq(schema.courses.id, id));
+
+    if (existingCourse.length === 0) {
+      throw new NotFoundException('Mata kuliah tidak ditemukan');
+    }
+
+    if (existingCourse[0].lecturerId !== lecturerId) {
+      throw new ForbiddenException(
+        'Akses Ditolak! Anda bukan pengampu mata kuliah ini.',
+      );
+    }
+
     await this.db.delete(schema.courses).where(eq(schema.courses.id, id));
     return {
       message: `Mata kuliah ID ${id} beserta jadwalnya berhasil dihapus!`,

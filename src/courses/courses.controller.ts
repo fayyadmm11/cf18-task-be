@@ -146,8 +146,10 @@ export class CoursesController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateCourseDto: UpdateCourseDto,
+    @Req() req: AuthRequest, // 👈 Tambahkan ini
   ) {
-    return this.coursesService.update(id, updateCourseDto);
+    const userId = req.user.sub; // 👈 Ambil ID Dosen
+    return this.coursesService.update(id, updateCourseDto, userId); // 👈 Lempar ke service
   }
 
   // DELETE /courses/:id -> HANYA Dosen
@@ -165,7 +167,8 @@ export class CoursesController {
     status: 404,
     description: 'Course tidak ditemukan',
   })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.coursesService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: AuthRequest) {
+    const userId = req.user.sub;
+    return this.coursesService.remove(id, userId); // 👈 Lempar ke service
   }
 }
