@@ -223,6 +223,7 @@ export class CoursesService {
         capacity: schema.courses.capacity,
         enrolledCount: sql<number>`count(${schema.studentCourses.studentId})`,
         lecturerName: schema.users.name,
+        lecturerId: schema.courses.lecturerId,
       })
       .from(schema.courses)
       .leftJoin(
