@@ -1,0 +1,38 @@
+name: Backend CI (Satpam Kode)
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Mengambil Kode dari GitHub
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Cek Format & Linter
+        run: pnpm run lint
+
+      - name: Build Aplikasi
+        run: pnpm run build
+
+      - name: Jalankan Unit Test
+        run: pnpm run test
