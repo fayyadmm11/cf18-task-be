@@ -8,6 +8,16 @@ import {
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
+interface UserWithRole {
+  id: number;
+  email: string;
+  role: string;
+}
+
+interface RequestWithUser extends Request {
+  user?: UserWithRole;
+}
+
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
@@ -25,7 +35,7 @@ export class RolesGuard implements CanActivate {
     }
 
     // 3. Ambil data user yang sudah diekstrak oleh JwtStrategy
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<RequestWithUser>();
     const user = request.user;
 
     // Jika entah bagaimana tidak ada user (mungkin lupa pasang JwtAuthGuard), tolak!
@@ -34,7 +44,7 @@ export class RolesGuard implements CanActivate {
     }
 
     // 4. Cek apakah role user saat ini ada di dalam daftar role yang diizinkan
-    const hasRole = requiredRoles.includes(user.role);
+    const hasRole: boolean = requiredRoles.includes(user.role);
 
     if (!hasRole) {
       throw new ForbiddenException(

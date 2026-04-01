@@ -4,6 +4,6 @@ import { RhsService } from './rhs.service';
 
 @Module({
   controllers: [RhsController],
-  providers: [RhsService]
+  providers: [RhsService],
 })
 export class RhsModule {}
